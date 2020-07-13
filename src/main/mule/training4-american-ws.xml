@@ -1,0 +1,166 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:batch="http://www.mulesoft.org/schema/mule/batch" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core"
+	xmlns:db="http://www.mulesoft.org/schema/mule/db"
+	xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/current/mule-db.xsd
+http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+http://www.mulesoft.org/schema/mule/batch http://www.mulesoft.org/schema/mule/batch/current/mule-batch.xsd">
+	<http:listener-config name="HTTP_Listener_config" doc:name="HTTP Listener config" doc:id="d21de3de-aaae-4bb2-b1f0-ac212bd32951" >
+		<http:listener-connection host="0.0.0.0" port="8081" />
+	</http:listener-config>
+	<db:config name="Database_Config" doc:name="Database Config" doc:id="62704e69-4310-46c8-b223-a38e23e3e7c0" >
+		<db:my-sql-connection host="iltdb.learn.mulesoft.com" port="3306" user="mule" password="mule" database="training" />
+	</db:config>
+	<db:config name="Database_Config_Derby" doc:name="Database Config" doc:id="8094f2df-4b52-4050-8895-dfbd37843c2f" >
+		<db:derby-connection database="myinternaldb" create="true" transactionIsolation="READ_COMMITTED" />
+	</db:config>
+	<flow name="getFlights" doc:id="fde6d9df-644e-43cc-9998-9cb51b9ecf60" >
+		<http:listener doc:name="GET /foreach" doc:id="b0a23bfd-c9d2-4c9a-8ee8-79b8b21947b5" config-ref="HTTP_Listener_config" path="/foreach"/>
+		<db:select doc:name="Select" doc:id="443fa1ed-b55b-4934-a26b-957dfd390871" config-ref="Database_Config">
+			<db:sql ><![CDATA[SELECT *
+FROM american
+]]></db:sql>
+		</db:select>
+		<logger level="INFO" doc:name="Logger" doc:id="e69d6ef2-eac5-42bb-acf6-99ccee398944" message="#[payload]"/>
+		<set-variable value="0" doc:name="Set Variable" doc:id="ec06a3de-c0ac-4223-b610-e7bea48b5086" variableName="counter"/>
+		<try doc:name="Try" doc:id="fd5e00bc-a58f-4423-b5b9-de0ca5ee6aa1" >
+			<db:execute-ddl doc:name="Execute DDL" doc:id="cb4cb00d-64a7-4022-b9b9-136f78f123d5" config-ref="Database_Config_Derby">
+			<db:sql><![CDATA[CREATE TABLE MYFLIGHTS (
+    code VARCHAR(100)
+    )]]></db:sql>
+		</db:execute-ddl>
+			<error-handler >
+				<on-error-continue enableNotifications="true" logException="true" doc:name="On Error Continue" doc:id="f7b5ac39-300a-440c-b649-dcdf5285b4b5" />
+			</error-handler>
+		</try>
+		<foreach doc:name="For Each" doc:id="89b1f6d3-4c00-4a73-aa02-e62ac493760d" >
+			<logger level="INFO" doc:name="Logger" doc:id="0a452ca8-dd56-41a7-bf42-aa09640a2915" message="#[payload.code1]"/>
+			<db:insert doc:name="Insert" doc:id="507282af-2ee1-4a43-933c-11f467afee71" config-ref="Database_Config_Derby">
+				<db:sql><![CDATA[INSERT INTO MYFLIGHTS(code) VALUES (:code)]]></db:sql>
+				<db:input-parameters><![CDATA[#[{ "code": payload.code1 as String }]]]></db:input-parameters>
+			</db:insert>
+		</foreach>
+		<ee:transform doc:name="Transform Message" doc:id="092eafc1-57a4-4823-b6d8-0284a296a1cd" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+payload map ( payload01 , indexOfPayload01 ) -> {
+	ID: payload01.ID,
+	code: (payload01.code1 default "") ++ (payload01.code2 default ""),
+	price: payload01.price default 0,
+	departureDate: payload01.takeOffDate as String default "",
+	origin: payload01.fromAirport default "",
+	destination: payload01.toAirport default "",
+	emptySeats: payload01.seatsAvailable default 0,
+	plane: {
+		"type": payload01.planeType default "",
+		totalSeats: payload01.totalSeats default 0
+	}
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</flow>
+	<flow name="derbyInspectorFlow" doc:id="d564418e-4aef-4ea9-9586-216b9fc9c0f8" >
+		<http:listener doc:name="GET /derby" doc:id="054e9574-0302-4e30-b0f6-8a56436775ee" config-ref="HTTP_Listener_config" path="/derby"/>
+		<db:select doc:name="Select" doc:id="0d44c1ae-3dcf-4766-b5f9-f8eae3644aa3" config-ref="Database_Config_Derby">
+			<db:sql ><![CDATA[SELECT * FROM MYFLIGHTS]]></db:sql>
+		</db:select>
+		<ee:transform doc:name="Transform Message" doc:id="79444db4-493f-4857-85f7-777a4f99fbc3" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</flow>
+	<flow name="Copy_of_getFlights" doc:id="d35d1492-f108-4041-aecb-754016283200" >
+		<http:listener doc:name="GET /aggregator" doc:id="6d75a5b5-2099-4fc1-8cae-35e495171329" config-ref="HTTP_Listener_config" path="/aggregator"/>
+		<db:select doc:name="Copy_of_Select" doc:id="d3206439-2012-48d2-acd3-a713c68e78d2" config-ref="Database_Config" >
+			<db:sql ><![CDATA[SELECT *
+FROM american
+]]></db:sql>
+		</db:select>
+		<logger level="INFO" doc:name="Copy_of_Logger" doc:id="92714d68-1673-4b19-a224-d288435542e8" message="#[payload]" />
+		<set-variable value="0" doc:name="Copy_of_Set Variable" doc:id="474407a1-b56f-4f00-8f97-254a7658d675" variableName="counter" />
+		<try doc:name="Copy_of_Try" doc:id="76c777a4-a2ab-46a1-a318-f3d4fb055df9" >
+			<db:execute-ddl doc:name="Copy_of_Execute DDL" doc:id="81ab110d-b1ae-41aa-8342-98b7a3efd704" config-ref="Database_Config_Derby" >
+				<db:sql ><![CDATA[CREATE TABLE MYFLIGHTS (
+    code VARCHAR(100)
+    )]]></db:sql>
+			</db:execute-ddl>
+			<error-handler >
+				<on-error-continue enableNotifications="true" logException="true" doc:name="Copy_of_On Error Continue" doc:id="865e7b70-b822-4708-a2ed-f258a3560173" />
+			</error-handler>
+		</try>
+		<batch:job jobName="training4-american-wsBatch_Job" doc:id="32715558-957a-4025-9f0f-a6e86afa252d" >
+			<batch:process-records >
+				<batch:step name="Batch_Step" doc:id="95457784-c823-460e-9742-b5eadfec9cd7" >
+					<batch:aggregator doc:name="Batch Aggregator" doc:id="3f76224f-0cb6-4e8c-9f27-22733156cde9" size="2">
+						<ee:transform doc:name="Transform Message" doc:id="322b6581-9e04-49a5-aeb3-cded50497a26" >
+							<ee:message >
+								<ee:set-payload ><![CDATA[%dw 2.0
+output application/java
+---
+payload map(object, index) -> {
+	newcode: object.code2
+}]]></ee:set-payload>
+							</ee:message>
+						</ee:transform>
+						<logger level="INFO" doc:name="Logger" doc:id="4ccc6062-dfd0-4197-806a-4cfd0c2cbf55" message="#[output application/json --- payload]"/>
+						<db:bulk-insert doc:name="Bulk insert" doc:id="4ed182b2-9339-46bf-aa06-4413bee82e12" config-ref="Database_Config_Derby">
+							<db:sql ><![CDATA[INSERT INTO MYFLIGHTS VALUES (:newcode)]]></db:sql>
+						</db:bulk-insert>
+					</batch:aggregator>
+				</batch:step>
+			</batch:process-records>
+		</batch:job>
+		<set-payload value="#[output text/plain --- 'Job Submitted']" doc:name="Set Payload" doc:id="36f6162a-a3d5-4543-b774-e21bab2bf923" />
+	</flow>
+	<flow name="Copy_of_Copy_of_getFlights" doc:id="61f61223-1d20-4d0d-841f-bdf60893d7db" >
+		<http:listener doc:name="GET /streaming" doc:id="2b0ed876-dcb3-46c0-85dd-5a6904b3ae94" config-ref="HTTP_Listener_config" path="/streaming" />
+		<db:select doc:name="Copy_of_Copy_of_Select" doc:id="8dda7fcd-fa1f-472f-9a96-e28f70fa329c" config-ref="Database_Config" >
+			<db:sql ><![CDATA[SELECT *
+FROM american
+]]></db:sql>
+		</db:select>
+		<logger level="INFO" doc:name="Copy_of_Copy_of_Logger" doc:id="0614f9f3-bd3b-407e-9037-1ebd7c6ae23b" message="#[payload]" />
+		<set-variable value="0" doc:name="Copy_of_Copy_of_Set Variable" doc:id="2d2c665d-30b3-49db-9248-0e4a56780436" variableName="counter" />
+		<try doc:name="Copy_of_Copy_of_Try" doc:id="74afb568-8aaa-4dcc-859d-3cdde6fdbaec" >
+			<db:execute-ddl doc:name="Copy_of_Copy_of_Execute DDL" doc:id="12119158-6372-4a27-af55-3907aecc5550" config-ref="Database_Config_Derby" >
+				<db:sql ><![CDATA[CREATE TABLE MYFLIGHTS (
+    code VARCHAR(100)
+    )]]></db:sql>
+			</db:execute-ddl>
+			<error-handler >
+				<on-error-continue enableNotifications="true" logException="true" doc:name="Copy_of_Copy_of_On Error Continue" doc:id="4443234a-d1fe-44b3-b8b5-f18d505cb24c" />
+			</error-handler>
+		</try>
+		<ee:transform doc:name="Transform Message" doc:id="d2723c0b-c4f4-4887-941f-ec797d33b172" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/java
+---
+payload map(object, index) -> {
+	code: object.code1 as String ++ object.code2 as String
+}]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+		<logger level="INFO" doc:name="Copy_of_Logger" doc:id="775913a5-dd43-4dba-b55b-4c6a02c2793c" message="#[output application/json --- payload]" />
+		<db:bulk-insert doc:name="Copy_of_Bulk insert" doc:id="29303fea-1d01-4329-998f-f1352baeef2b" config-ref="Database_Config_Derby">
+							<db:sql><![CDATA[INSERT INTO MYFLIGHTS VALUES (:code)]]></db:sql>
+						</db:bulk-insert>
+		<ee:transform doc:name="Transform Message" doc:id="6342decf-540c-412d-aa9c-1c5bebffdd7e" >
+			<ee:message >
+				<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+payload]]></ee:set-payload>
+			</ee:message>
+		</ee:transform>
+	</flow>
+
+</mule>
